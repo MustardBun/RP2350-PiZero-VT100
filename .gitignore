@@ -1,0 +1,27 @@
+# Build output
+build/
+build-*/
+cmake-build-*/
+*.o
+*.obj
+*.elf
+*.bin
+*.hex
+*.map
+*.dis
+*.lst
+
+# Generated PIO headers
+generated/
+
+# Python
+__pycache__/
+*.pyc
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
