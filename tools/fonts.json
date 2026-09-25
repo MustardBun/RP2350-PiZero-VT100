@@ -1,0 +1,38 @@
+{
+  "_comment": "Fonts baked into the VT100 terminal. Edit this file, then run bake-fonts.bat (or bake-fonts.sh), then rebuild.",
+
+  "_type_note": "'type' is 'bdf' for native bitmap fonts (glyphs copied one-to-one, no scaling) or 'ttf' for outline fonts (supersampled and filtered down to the cell). Bitmap sources are the only way to keep historical glyphs pixel-perfect; scaling an outline face to 8 pixels wide loses its shape.",
+
+  "_path_note": "Relative paths are resolved against the repository root. TTF entries use ${FONT_DIR} and ${FONT_SUFFIX} so the same file works on Windows and Linux: FONT_DIR defaults to the platform's font directory and FONT_SUFFIX to .ttf. Override either with the FONT_DIR / FONT_SUFFIX environment variables.",
+
+  "supersample": 4,
+
+  "families": [
+    {
+      "id": "vt220",
+      "name": "DEC VT220",
+      "type": "bdf",
+      "path": "tools/fonts/DEC-VT220-10x20.bdf",
+      "sizes": [20],
+      "_note": "Authentic DEC terminal glyphs: native 10x20 bitmap from 1986 VT220 ROM firmware. Ink is exactly 8 pixels wide, so it maps onto our 8-pixel cell with no scaling and yields a classic 80x24 screen."
+    },
+    {
+      "id": "modern",
+      "name": "Modern",
+      "type": "ttf",
+      "path": "${FONT_DIR}/consola${FONT_SUFFIX}",
+      "threshold": 130,
+      "sizes": [20],
+      "_note": "Consolas. Present on Windows by default; on Linux install ttf-mscorefonts-installer or drop a substitute mono face in tools/fonts/ and point path at it."
+    },
+    {
+      "id": "terminal",
+      "name": "Terminal",
+      "type": "ttf",
+      "path": "${FONT_DIR}/CascadiaMono${FONT_SUFFIX}",
+      "threshold": 134,
+      "sizes": [20],
+      "_note": "Cascadia Mono. Ships with Windows Terminal and recent VS Code releases; on Linux install the Cascadia Code package or point path at another mono face."
+    }
+  ]
+}
