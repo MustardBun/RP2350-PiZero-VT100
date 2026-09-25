@@ -193,6 +193,7 @@ UART0 at **115200 baud, 8 data bits, no parity, 1 stop bit**:
 > **Level shifting is required.** The Z80-MBC2 UART is a 5 V interface and the
 > RP2350 is 3.3 V. Add external level conversion in **both** directions.
 > **Never apply 5 V to an RP2350 GPIO** — it will damage the chip.
+> For me, I built a passive 10k/22k voltage divider to step down the 5V TX out to about 3.4V for the RX in of the RP2350. 3.3V logic high output of the RP2350 was sufficient for the ATMEGA32A RX in, but check your specific hardware requirements. I also added a small 0.1uF decoupling capacitor on this small level shift board between 5V VCC and GND. Note that on the Z80-MBC2, the TX and RX pins silkscreened are from the perspective of a UART-USB module, hence there are inverted (the TX pin actually receives, while the RX pin transmits).
 
 ### USB keyboard
 
