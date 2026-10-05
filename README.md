@@ -384,9 +384,11 @@ you commit to one.
 > **Bitmap and outline faces need opposite treatment,** which the converter
 > handles automatically. BDF glyphs are copied one-to-one with no interpolation,
 > because resampling a bitmap face destroys the very thing that makes it
-> authentic. TTF glyphs are fitted to the cell in both axes and rendered at 4x
-> before being box-filtered down, because rasterising straight to 8xN aliases
-> badly.
+> authentic. TTF glyphs are drawn at the largest size that fits the cell, so the
+> font's own small-size hinting keeps the stems a single pixel wide, and the
+> line box is then scaled to fill the cell. Because one transform is shared by
+> every glyph, lowercase letters stay shorter than capitals instead of being
+> stretched to match them.
 
 ---
 
