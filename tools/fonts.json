@@ -1,11 +1,9 @@
 {
   "_comment": "Fonts baked into the VT100 terminal. Edit this file, then run bake-fonts.bat (or bake-fonts.sh), then rebuild.",
 
-  "_type_note": "'type' is 'bdf' for native bitmap fonts (glyphs copied one-to-one, no scaling) or 'ttf' for outline fonts (supersampled and filtered down to the cell). Bitmap sources are the only way to keep historical glyphs pixel-perfect; scaling an outline face to 8 pixels wide loses its shape.",
+  "_type_note": "'type' is 'bdf' for native bitmap fonts (glyphs copied one-to-one, no scaling) or 'ttf' for outline fonts (rendered hinted, then scaled from the line box to the cell). Bitmap sources are the only way to keep historical glyphs pixel-perfect; scaling an outline face to 8 pixels wide loses its shape.",
 
   "_path_note": "Relative paths are resolved against the repository root. TTF entries use ${FONT_DIR} and ${FONT_SUFFIX} so the same file works on Windows and Linux: FONT_DIR defaults to the platform's font directory and FONT_SUFFIX to .ttf. Override either with the FONT_DIR / FONT_SUFFIX environment variables.",
-
-  "supersample": 4,
 
   "families": [
     {
