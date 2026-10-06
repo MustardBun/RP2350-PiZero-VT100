@@ -150,12 +150,13 @@ static inline bool color_bg_visible(uint8_t color_index, uint8_t background_inde
 }
 
 /* Boot defaults: the authentic DEC VT220 glyphs in white on black, with
- * autowrap on and LF treated as CR+LF because many CP/M setups rely on it. */
+ * autowrap on and VT100 New Line Mode reset. CP/M treats CR as the Enter key,
+ * so Return must send one CR rather than the optional CR+LF pair. */
 #define DEFAULT_FONT_SELECTION 0
 #define DEFAULT_COLOR_SELECTION 2
 #define DEFAULT_BACKGROUND_SELECTION 0
 #define DEFAULT_AUTOWRAP_SELECTION 0 /* 0 = on */
-#define DEFAULT_NEWLINE_SELECTION 0  /* 0 = LF implies CR */
+#define DEFAULT_NEWLINE_SELECTION 1  /* 1 = LNM reset: LF only, Return sends CR */
 #define DEFAULT_CURSOR_SELECTION 0   /* 0 = cursor shown */
 
 #define PLANE_SIZE_BYTES (FRAME_WIDTH * FRAME_HEIGHT / 8)
@@ -169,10 +170,11 @@ static struct dvi_inst dvi0;
  * for code. A magic number guards against loading erased or foreign data, and
  * the checksum guards against a partial write.
  * ------------------------------------------------------------------------- */
-/* Bumping the magic invalidates records written by older firmware. It is
- * raised whenever menu items change order or meaning, so a stale saved index
- * cannot silently select a different colour. */
-#define SETTINGS_MAGIC 0x35545653u /* "SVT5" */
+/* SVT7 changes the default Line Feed/New Line Mode. SVT5 is the original
+ * settings layout; SVT6 is the short-lived resolution experiment's layout. */
+#define SETTINGS_MAGIC 0x37545653u /* "SVT7" */
+#define SETTINGS_MAGIC_V5 0x35545653u /* "SVT5" */
+#define SETTINGS_MAGIC_V6 0x35545654u /* "SVT6" */
 #define SETTINGS_SECTOR_OFFSET (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE)
 #define SETTINGS_ADDRESS (XIP_BASE + SETTINGS_SECTOR_OFFSET)
 
@@ -207,6 +209,16 @@ static uint32_t settings_checksum(const settings_t *settings)
     return value;
 }
 
+/* SVT6 inserted a resolution byte into reserved[0] and included it in the
+ * checksum. Recognize it only for migration; resolution is not used by this
+ * 640x480 firmware. */
+static uint32_t settings_v6_checksum(const settings_t *settings)
+{
+    uint32_t value = settings_checksum(settings);
+    value = value * 31u + settings->reserved[0];
+    return value;
+}
+
 static void flash_write_callback(void *param)
 {
     const settings_t *settings = (const settings_t *)param;
@@ -218,10 +230,8 @@ static void flash_write_callback(void *param)
     flash_range_program(SETTINGS_SECTOR_OFFSET, page, sizeof(page));
 }
 
-static bool settings_valid(const settings_t *settings)
+static bool settings_fields_valid(const settings_t *settings)
 {
-    if (settings->magic != SETTINGS_MAGIC) return false;
-    if (settings->checksum != settings_checksum(settings)) return false;
     if (settings->font >= VT100_FONT_COUNT) return false;
     if (settings->color >= TEXT_COLOR_COUNT) return false;
     if (settings->background >= BACKGROUND_COUNT) return false;
@@ -233,6 +243,26 @@ static bool settings_valid(const settings_t *settings)
      * invalid and the boot defaults are used instead. */
     if (!color_bg_visible(settings->color, settings->background)) return false;
     return true;
+}
+
+static bool settings_valid(const settings_t *settings)
+{
+    return settings->magic == SETTINGS_MAGIC &&
+           settings->checksum == settings_checksum(settings) &&
+           settings_fields_valid(settings);
+}
+
+static bool settings_legacy_valid(const settings_t *settings)
+{
+    if (!settings_fields_valid(settings)) return false;
+    if (settings->magic == SETTINGS_MAGIC_V5) {
+        return settings->checksum == settings_checksum(settings);
+    }
+    if (settings->magic == SETTINGS_MAGIC_V6) {
+        return settings->reserved[0] < 3 &&
+               settings->checksum == settings_v6_checksum(settings);
+    }
+    return false;
 }
 
 /* Persist the current menu selections so the next power-up restores them.
@@ -331,10 +361,10 @@ static uint16_t terminal_rows = MAX_SCREEN_ROWS;
 static uint16_t cell_width = MAX_CELL_WIDTH;
 static uint16_t cell_height = MIN_CELL_HEIGHT;
 static bool autowrap_enabled = true;
-/* Real VT100 hardware does not move the cursor horizontally on LF, which is
- * why hosts send CR LF. Some CP/M software emits a bare LF and then expects
- * the next line to begin at the left margin, so that behaviour is selectable. */
-static bool newline_crlf = true;
+/* Runtime VT100 Line Feed/New Line Mode. Hosts commonly send CR/LF explicitly;
+ * some CP/M software sends LF alone and expects it to return to column 0, so
+ * LNM remains selectable even though its power-on default is reset. */
+static bool newline_crlf = false;
 /* VT100 defers the wrap when the last column is filled: the character is
  * stored, and the cursor only advances when the next character arrives. This
  * keeps a program that writes a full row from scrolling prematurely. */
@@ -1014,7 +1044,7 @@ static void apply_font(uint8_t index)
     pending_wrap = false;
 }
 
-/* Put every mode back to the power-on default. Used by RIS (ESC c) and by
+/* Put every mode back to the VT100 power-on default. Used by RIS (ESC c) and by
  * entering terminal mode, so a reset genuinely resets rather than leaving a
  * stale mode behind from earlier output. */
 static void reset_terminal_state(void)
@@ -1027,6 +1057,7 @@ static void reset_terminal_state(void)
     screen_reverse = false;
     cursor_keys_application = false;
     keypad_application = false;
+    newline_crlf = false;
     /* Reset-to-initial-state means ANSI mode, so this also unwinds a stuck
      * VT52 session - the software way back for a host that entered VT52 and
      * then died without sending ESC <. */
@@ -1095,9 +1126,9 @@ static void apply_autowrap(uint8_t index)
     if (!autowrap_enabled) pending_wrap = false;
 }
 
-/* When enabled, LF implies CR: the cursor also returns to column 0. This is
- * what many CP/M setups expect, and it keeps the prompt at the left margin
- * even if the host only sends LF. */
+/* This is VT100 Line Feed/New Line Mode (LNM). When set, received LF also
+ * returns the cursor to column 0 and keyboard Return sends CR+LF; when reset,
+ * LF only moves down and Return sends CR. */
 static void apply_newline(uint8_t index)
 {
     newline_selection = index > 1 ? 1 : index;
@@ -1274,7 +1305,9 @@ static void menu_value_label(uint8_t item, uint8_t value, char *out, size_t size
             snprintf(out, size, "%s", value == 0 ? "On" : "Off");
             break;
         case MENU_ITEM_NEWLINE:
-            snprintf(out, size, "%s", value == 0 ? "LF = CR+LF" : "LF only");
+            snprintf(out, size, "%s", value == 0
+                     ? "LNM on: Return CR+LF"
+                     : "LNM off: Return CR");
             break;
         case MENU_ITEM_CURSOR:
             snprintf(out, size, "%s", value == 0 ? "Shown" : "Hidden");
@@ -1433,6 +1466,9 @@ static void begin_terminal_mode(void)
     cursor_x = 0;
     cursor_y = 0;
     reset_terminal_state();
+    /* Apply the user's saved LNM preference for a fresh session. RIS itself
+     * still resets LNM to the VT100 power-on state (off). */
+    apply_newline(newline_selection);
     pending_wrap = false;
     full_redraw_pending = false;
     draw_screen();
@@ -1449,6 +1485,16 @@ static void settings_load(void)
         apply_background(stored->background);
         apply_autowrap(stored->autowrap);
         apply_newline(stored->newline);
+        apply_cursor(stored->cursor);
+    } else if (settings_legacy_valid(stored)) {
+        /* Older defaults enabled LNM, making Enter submit CR+LF. Keep the
+         * user's other settings, but migrate Return to the CP/M-safe CR-only
+         * default. The next explicit save writes a current SVT7 record. */
+        apply_font(stored->font);
+        apply_color(stored->color);
+        apply_background(stored->background);
+        apply_autowrap(stored->autowrap);
+        apply_newline(DEFAULT_NEWLINE_SELECTION);
         apply_cursor(stored->cursor);
     } else {
         apply_font(DEFAULT_FONT_SELECTION);
@@ -2413,10 +2459,9 @@ static uint8_t key_to_bytes(uint8_t keycode, uint8_t modifier, uint8_t *out, uin
     }
 
     uint8_t character = keycode < 128 ? keycode2ascii[keycode][shift ? 1 : 0] : 0;
-    /* LNM also governs the RETURN key, not just incoming LF: in newline mode
-     * the key sends CR followed by LF, and in the default line-feed mode it
-     * sends CR alone. This is opt-in - a host has to ask for newline mode - so
-     * it cannot disturb the default CP/M behaviour. */
+    /* LNM also governs the RETURN key, not just incoming LF: when enabled the
+     * key sends CR followed by LF; with the VT100 power-on default (LNM off)
+     * it sends CR alone, as CP/M command input expects. */
     if (character == '\r' && newline_crlf) {
         if (capacity < 2) return 0;
         out[0] = '\r';

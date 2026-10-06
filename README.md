@@ -71,11 +71,11 @@ You only need the UF2 file and a USB cable. No compiler, no SDK.
 The firmware is stored in flash, so it survives power cycling. To update it,
 just repeat the steps above.
 
-> **Note:** flashing replaces the whole firmware. Your saved settings — font,
-> colour, background, autowrap, newline and cursor — live in the last flash
-> sector and are **erased by a reflash**. The terminal falls back to
-> white-on-black with the DEC VT220 font after an update; set them again from
-> the menu if you had changed them.
+> **Note:** saved settings live in the last flash sector and normally survive
+> a UF2 firmware update. When upgrading from an older settings version, the
+> firmware preserves font, colour, background, autowrap and cursor, but resets
+> New Line Mode to off so Enter sends only CR. A first boot or invalid record
+> uses the defaults.
 
 ---
 
@@ -108,7 +108,7 @@ entries:
 | `COLOUR` | Amber, Phosphor, White, Green, Cyan, Magenta, Red, Blue, Black |
 | `BACKGROUND` | Black or White |
 | `AUTOWRAP` | On or Off |
-| `NEWLINE` | LF = CR+LF, or LF only |
+| `NEWLINE` | LNM off (CR-only Return) or LNM on (CR+LF Return) |
 | `CURSOR` | Shown or Hidden |
 | `EXIT AND SAVE` | Store the selections and leave the menu |
 | `EXIT WITHOUT SAVING` | Restore the selections that were live when the menu opened, and leave |
@@ -122,6 +122,25 @@ entries:
 | Left | Back out |
 | Enter | Accept the value |
 | Esc | Leave the menu without saving |
+
+### Enter and New Line Mode
+
+Enter sends a single carriage return (CR) by default. This matches the VT100
+keyboard and CP/M command input, where CR submits a command. The terminal does
+not append LF to keyboard input by default, so a CP/M prompt is not submitted a
+second time.
+
+`NEWLINE` controls the VT100 Line Feed/New Line Mode (LNM), which affects both
+directions of the terminal. With LNM off (the power-on default), a received LF
+moves down without returning to column 1, and keyboard Return sends CR. With
+LNM on, received LF also returns to column 1, and keyboard Return sends CR+LF.
+A host may change this mode with `CSI 20 h` / `CSI 20 l`; the menu setting is
+the saved preference used when starting a fresh terminal session. `RIS`
+(`ESC c`) resets LNM to off, as on a VT100.
+
+This follows the original [DEC VT100 Programmer Information](https://vt100.net/docs/vt100-ug/chapter3.html):
+Return transmits CR; LNM set changes Return to CR+LF, while LNM reset sends CR
+alone.
 
 ### Leaving the menu
 
